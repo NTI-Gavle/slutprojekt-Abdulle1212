@@ -1,8 +1,8 @@
 <?php
 /**
- * register.php - Registreringssida
+ * register.php - Registration page
  */
-$pageTitle = 'Registrera';
+$pageTitle = 'Sign Up';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/auth.php';
 
@@ -22,27 +22,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $confirmPassword = $_POST['confirm_password'] ?? '';
 
     if ($username === '') {
-        $errors[] = 'Användarnamn krävs.';
-    } elseif (strlen($username) < 3 || strlen($username) > 50) {
-        $errors[] = 'Användarnamnet måste vara mellan 3 och 50 tecken.';
+        $errors[] = 'Username is required.';
+    } elseif (strlen($username) < 3 || strlen($username) > 30) {
+        $errors[] = 'Username must be between 3 and 30 characters.';
+    } elseif (!preg_match('/^[a-zA-Z0-9_]+$/', $username)) {
+        $errors[] = 'Username can only contain letters, numbers, and underscores.';
     }
 
     if ($email === '') {
-        $errors[] = 'E-postadress krävs.';
+        $errors[] = 'Email address is required.';
     } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-        $errors[] = 'Ange en giltig e-postadress.';
+        $errors[] = 'Please enter a valid email address.';
     }
 
     if ($password === '') {
-        $errors[] = 'Lösenord krävs.';
-    } elseif (strlen($password) < 6) {
-        $errors[] = 'Lösenordet måste vara minst 6 tecken.';
+        $errors[] = 'Password is required.';
+    } else {
+        $passwordErrors = validatePassword($password);
+        $errors = array_merge($errors, $passwordErrors);
     }
 
     if ($confirmPassword === '') {
-        $errors[] = 'Bekräfta ditt lösenord.';
+        $errors[] = 'Please confirm your password.';
     } elseif ($password !== $confirmPassword) {
-        $errors[] = 'Lösenorden matchar inte.';
+        $errors[] = 'Passwords do not match.';
     }
 
     if (empty($errors)) {
@@ -50,17 +53,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->execute([$username, $email]);
 
         if ($stmt->fetch()) {
-            $errors[] = 'Användarnamnet eller e-postadressen är redan registrerad.';
+            $errors[] = 'The username or email is already registered.';
         }
     }
 
     if (empty($errors)) {
         $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
+        $displayName = ucfirst($username);
+        
+        $stmt = $pdo->prepare(
+            'INSERT INTO users (username, email, password_hash, display_name) VALUES (?, ?, ?, ?)'
+        );
+        $stmt->execute([$username, $email, $hashedPassword, $displayName]);
 
-        $stmt = $pdo->prepare('INSERT INTO users (username, email, password, role) VALUES (?, ?, ?, ?)');
-        $stmt->execute([$username, $email, $hashedPassword, 'user']);
-
-        $success = 'Kontot skapades! Du kan nu logga in.';
+        $success = 'Account created! You can now log in.';
         $username = '';
         $email = '';
     }
@@ -71,8 +77,8 @@ require_once __DIR__ . '/../includes/header.php';
 
 <section class="auth-page-header">
     <div class="container">
-        <h1>Skapa konto</h1>
-        <p>Registrera dig för att börja kvittra och delta i flödet.</p>
+        <h1>Create account</h1>
+        <p>Sign up to start kvitting and joining the feed.</p>
     </div>
 </section>
 
@@ -85,8 +91,8 @@ require_once __DIR__ . '/../includes/header.php';
                         <div class="auth-icon">
                             <i class="bi bi-person-plus"></i>
                         </div>
-                        <h2 class="auth-title">Registrera konto</h2>
-                        <p class="auth-subtitle">Fyll i uppgifterna nedan för att skapa ett nytt konto.</p>
+                        <h2 class="auth-title">Create account</h2>
+                        <p class="auth-subtitle">Fill in the details below to create a new account.</p>
 
                         <?php if (!empty($errors)): ?>
                             <div class="alert alert-danger" role="alert">
@@ -101,13 +107,13 @@ require_once __DIR__ . '/../includes/header.php';
                         <?php if ($success): ?>
                             <div class="alert alert-success" role="alert">
                                 <?php echo htmlspecialchars($success); ?>
-                                <a href="<?php echo htmlspecialchars(appUrl('login.php')); ?>" class="alert-link">Logga in här</a>.
+                                <a href="<?php echo htmlspecialchars(appUrl('login.php')); ?>" class="alert-link">Log in here</a>.
                             </div>
                         <?php endif; ?>
 
                         <form method="POST" action="" class="auth-form">
                             <div class="mb-3">
-                                <label for="username" class="form-label">Användarnamn</label>
+                                <label for="username" class="form-label">Username</label>
                                 <input
                                     type="text"
                                     class="form-control"
@@ -116,13 +122,15 @@ require_once __DIR__ . '/../includes/header.php';
                                     value="<?php echo htmlspecialchars($username); ?>"
                                     required
                                     minlength="3"
-                                    maxlength="50"
-                                    placeholder="Välj ett användarnamn"
+                                    maxlength="30"
+                                    pattern="[a-zA-Z0-9_]+"
+                                    placeholder="Choose a username"
                                 >
+                                <div class="form-text">Letters, numbers, and underscores only.</div>
                             </div>
 
                             <div class="mb-3">
-                                <label for="email" class="form-label">E-postadress</label>
+                                <label for="email" class="form-label">Email address</label>
                                 <input
                                     type="email"
                                     class="form-control"
@@ -130,43 +138,43 @@ require_once __DIR__ . '/../includes/header.php';
                                     name="email"
                                     value="<?php echo htmlspecialchars($email); ?>"
                                     required
-                                    placeholder="din@epost.se"
+                                    placeholder="your@email.com"
                                 >
                             </div>
 
                             <div class="mb-3">
-                                <label for="password" class="form-label">Lösenord</label>
+                                <label for="password" class="form-label">Password</label>
                                 <input
                                     type="password"
                                     class="form-control"
                                     id="password"
                                     name="password"
                                     required
-                                    minlength="6"
-                                    placeholder="Minst 6 tecken"
+                                    minlength="8"
+                                    placeholder="At least 8 characters"
                                 >
-                                <div class="form-text">Välj ett lösenord med minst 6 tecken.</div>
+                                <div class="form-text">Must include uppercase, lowercase, and a number.</div>
                             </div>
 
                             <div class="mb-4">
-                                <label for="confirm_password" class="form-label">Bekräfta lösenord</label>
+                                <label for="confirm_password" class="form-label">Confirm password</label>
                                 <input
                                     type="password"
                                     class="form-control"
                                     id="confirm_password"
                                     name="confirm_password"
                                     required
-                                    placeholder="Skriv lösenordet igen"
+                                    placeholder="Re-enter your password"
                                 >
                             </div>
 
                             <button type="submit" class="btn btn-primary w-100 auth-submit">
-                                Skapa konto
+                                Create account
                             </button>
 
                             <p class="auth-switch text-center mb-0">
-                                Har du redan ett konto?
-                                <a href="<?php echo htmlspecialchars(appUrl('login.php')); ?>">Logga in här</a>
+                                Already have an account?
+                                <a href="<?php echo htmlspecialchars(appUrl('login.php')); ?>">Log in here</a>
                             </p>
                         </form>
                     </div>

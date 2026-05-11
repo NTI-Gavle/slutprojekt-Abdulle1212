@@ -1,8 +1,8 @@
 <?php
 /**
- * login.php - Inloggningssida
+ * login.php - Login page
  */
-$pageTitle = 'Logga in';
+$pageTitle = 'Login';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/auth.php';
 
@@ -13,33 +13,54 @@ if (isLoggedIn()) {
 $errors = [];
 $loginInput = '';
 $loggedOut = isset($_GET['logged_out']) && $_GET['logged_out'] === '1';
+$passwordResetRequested = isset($_GET['reset_requested']) && $_GET['reset_requested'] === '1';
+$passwordResetComplete = isset($_GET['password_reset']) && $_GET['password_reset'] === '1';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $loginInput = trim($_POST['login'] ?? '');
-    $password = $_POST['password'] ?? '';
+    $password = (string) ($_POST['password'] ?? '');
 
     if ($loginInput === '') {
-        $errors[] = 'Fyll i användarnamn eller e-postadress.';
+        $errors[] = 'Please enter your username or email.';
     }
 
     if ($password === '') {
-        $errors[] = 'Fyll i ditt lösenord.';
+        $errors[] = 'Please enter your password.';
     }
 
     if (empty($errors)) {
-        $stmt = $pdo->prepare('SELECT id, username, email, password, role FROM users WHERE username = ? OR email = ?');
+        $stmt = $pdo->prepare(
+            'SELECT id, username, email, password_hash, role
+             FROM users
+             WHERE username = ? OR email = ?
+             LIMIT 1'
+        );
         $stmt->execute([$loginInput, $loginInput]);
         $user = $stmt->fetch();
 
-        if ($user && password_verify($password, $user['password'])) {
-            $_SESSION['user_id'] = $user['id'];
+        $passwordMatches = false;
+
+        if ($user) {
+            $hash = $user['password_hash'] ?? '';
+            $plain = $user['password'] ?? '';
+            
+            if (!empty($hash)) {
+                $passwordMatches = password_verify($password, $hash);
+            } elseif (!empty($plain)) {
+                $passwordMatches = hash_equals($plain, $password) || password_verify($password, $plain);
+            }
+        }
+
+        if ($user && $passwordMatches) {
+            session_regenerate_id(true);
+            $_SESSION['user_id'] = (int) $user['id'];
             $_SESSION['username'] = $user['username'];
-            $_SESSION['role'] = $user['role'];
+            $_SESSION['role'] = $user['role'] ?? 'user';
 
             redirectTo('index.php');
         }
 
-        $errors[] = 'Felaktigt användarnamn, e-postadress eller lösenord.';
+        $errors[] = 'Invalid username, email, or password.';
     }
 }
 
@@ -48,8 +69,8 @@ require_once __DIR__ . '/../includes/header.php';
 
 <section class="auth-page-header">
     <div class="container">
-        <h1>Välkommen tillbaka</h1>
-        <p>Logga in för att fortsätta till ditt flöde.</p>
+        <h1>Welcome back</h1>
+        <p>Log in to continue to your feed.</p>
     </div>
 </section>
 
@@ -62,12 +83,24 @@ require_once __DIR__ . '/../includes/header.php';
                         <div class="auth-icon">
                             <i class="bi bi-box-arrow-in-right"></i>
                         </div>
-                        <h2 class="auth-title">Logga in</h2>
-                        <p class="auth-subtitle">Använd ditt användarnamn eller din e-postadress.</p>
+                        <h2 class="auth-title">Login</h2>
+                        <p class="auth-subtitle">Use your username or email address.</p>
 
                         <?php if ($loggedOut): ?>
                             <div class="alert alert-success" role="alert">
-                                Du har loggat ut.
+                                You have been logged out.
+                            </div>
+                        <?php endif; ?>
+
+                        <?php if ($passwordResetRequested): ?>
+                            <div class="alert alert-info" role="alert">
+                                If the email exists in our system, a reset link has been created.
+                            </div>
+                        <?php endif; ?>
+
+                        <?php if ($passwordResetComplete): ?>
+                            <div class="alert alert-success" role="alert">
+                                Your password has been updated. You can now log in with your new password.
                             </div>
                         <?php endif; ?>
 
@@ -83,7 +116,7 @@ require_once __DIR__ . '/../includes/header.php';
 
                         <form method="POST" action="" class="auth-form">
                             <div class="mb-3">
-                                <label for="login" class="form-label">Användarnamn eller e-post</label>
+                                <label for="login" class="form-label">Username or email</label>
                                 <input
                                     type="text"
                                     class="form-control"
@@ -91,29 +124,33 @@ require_once __DIR__ . '/../includes/header.php';
                                     name="login"
                                     value="<?php echo htmlspecialchars($loginInput); ?>"
                                     required
-                                    placeholder="t.ex. abdulle eller namn@epost.se"
+                                    placeholder="e.g. username or name@email.com"
                                 >
                             </div>
 
                             <div class="mb-4">
-                                <label for="password" class="form-label">Lösenord</label>
+                                <label for="password" class="form-label">Password</label>
                                 <input
                                     type="password"
                                     class="form-control"
                                     id="password"
                                     name="password"
                                     required
-                                    placeholder="Ditt lösenord"
+                                    placeholder="Your password"
                                 >
+                                <div class="auth-helper-row">
+                                    <span class="form-text mb-0">Use your account to continue.</span>
+                                    <a class="auth-inline-link" href="<?php echo htmlspecialchars(appUrl('forgot_password.php')); ?>">Forgot password?</a>
+                                </div>
                             </div>
 
                             <button type="submit" class="btn btn-primary w-100 auth-submit">
-                                Logga in
+                                Log in
                             </button>
 
                             <p class="auth-switch text-center mb-0">
-                                Har du inget konto?
-                                <a href="<?php echo htmlspecialchars(appUrl('register.php')); ?>">Registrera dig här</a>
+                                Don't have an account?
+                                <a href="<?php echo htmlspecialchars(appUrl('register.php')); ?>">Sign up here</a>
                             </p>
                         </form>
                     </div>
